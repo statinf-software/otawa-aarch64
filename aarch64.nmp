@@ -1,0 +1,7 @@
+include "nmp/defs.nmp"
+
+let ARMV8A = 1
+
+
+include "nmp/condition.nmp"
+include "nmp/control.nmp"

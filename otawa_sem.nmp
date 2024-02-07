@@ -1,0 +1,39 @@
+include "nmp/defs.nmp"
+
+var sem_rec_first[1, s32]
+
+macro if_cond = \
+	if !cond.otawa_never then \
+		if !cond.otawa_ever then \
+			scratch(rd.i); \
+			cont; \
+		endif;
+macro if_cond_no = \
+	if !cond.otawa_never then \
+		if !cond.otawa_ever then \
+			cont; \
+		endif;
+macro if_cond_r(i) = \
+	if !cond.otawa_never then \
+		if !cond.otawa_ever then \
+			scratch(i); \
+			cont; \
+		endif;
+macro if_cond_store = \
+	if !cond.otawa_never then \
+		if !cond.otawa_ever && setw then \
+			scratch(rn.i); \
+			cont; \
+		endif;
+macro if_cond_load = \
+	if !cond.otawa_never then \
+		if !cond.otawa_ever && !rd.use_pc then \
+			scratch(rd.i); \
+			if setw then \
+				scratch(rn.i); \
+			endif; \
+			cont; \
+		endif;				
+
+include "nmp/condition.nmp"
+include "nmp/control.nmp"
