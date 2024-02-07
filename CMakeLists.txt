@@ -3,7 +3,7 @@ project(otawa-aarch64)
 
 set(PROC 			"aarch64")
 set(NAMESPACE		"otawa")
-set(ELF_NUM			"42")
+set(ELF_NUM			"183")
 set(CONFIG			)
 
 set(ARM8_PATH "${CMAKE_SOURCE_DIR}/../armv8a-64")
@@ -85,7 +85,7 @@ target_link_libraries(${PROC} "${OTAWA_LDFLAGS} -Wl,-rpath -Wl,${ORIGIN}/../.. '
 
 # installation
 set(PLUGIN_PATH "${OTAWA_PREFIX}/lib/otawa/${NAMESPACE}")
-set(LOADER_PATH "${OTAWA_PREFIX}/lib/otawa/${NAMESPACE}")
+set(LOADER_PATH "${OTAWA_PREFIX}/lib/otawa/loader")
 install(TARGETS ${PROC} LIBRARY		DESTINATION ${PLUGIN_PATH})
 install(FILES	${PROC}.eld			DESTINATION ${PLUGIN_PATH})
 install(TARGETS ${PROC} LIBRARY		DESTINATION ${LOADER_PATH})

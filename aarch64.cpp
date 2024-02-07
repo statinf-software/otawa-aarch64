@@ -20,21 +20,21 @@
  *	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <gel/debug_line.h>
-#include <gel/gel.h>
-#include <gel/gel_elf.h>
+#include <cxxabi.h>
+
+#include <otawa/prog/Loader.h>
+#include <otawa/proc/ProcessorPlugin.h>
+#include <otawa/hard.h>
+#include <otawa/program.h>
+#include <otawa/prog/sem.h>
+#include <otawa/loader/aarch64.h>
+// #include <otawa/prog/features.h>
 
 #include <elm/stree/MarkerBuilder.h>
 #include <elm/stree/SegmentBuilder.h>
 
-//#include "config.h"
-#include <otawa/hard.h>
-#include <otawa/loader/aarch64.h>
-#include <otawa/proc/ProcessorPlugin.h>
-#include <otawa/prog/Loader.h>
-#include <otawa/prog/sem.h>
-#include <otawa/prog/features.h>
-#include <otawa/program.h>
+#include <gel++.h>
+#include <gel++/DebugLine.h>
 
 extern "C" {
 #	include <aarch64/grt.h>
@@ -49,7 +49,7 @@ namespace aarch64 {
 
 /*
  * Configuration
- * * ARM_SIM -- integrate functional simulator in ARM plugin.
+ * * AARCH64_SIM -- integrate functional simulator in ARM plugin.
  */
 
 #define VERSION "0.1"
@@ -114,8 +114,8 @@ static hard::PlainBank gpr("X", hard::Register::INT, 64, "x%d", 31);
 static const hard::RegBank *banks_tab[] = { &gpr };
 static Array<const hard::RegBank *> banks_table(1, banks_tab);
 
-static hard::Register *pc = new Register(format.make(32), hard::Register::INT, 64);
-static hard::Register *sp = new Register(format.make(33), hard::Register::INT, 64);
+static hard::Register *pc = new hard::Register("pc", hard::Register::INT, 64);
+static hard::Register *sp = new hard::Register("sp", hard::Register::INT, 64);
 
 // register decoding
 class RegisterDecoder {
@@ -123,17 +123,17 @@ public:
 	RegisterDecoder(void) {
 
 		// // clear the map
-		// for(int i = 0; i < ARM_REG_COUNT; i++)
+		// for(int i = 0; i < AARCH64_REG_COUNT; i++)
 		// 	map[i] = 0;
 
 		// // initialize it
-		// 	map[ARM_REG_GPR(i)] = gpr[i];
+		// 	map[AARCH64_REG_GPR(i)] = gpr[i];
 	}
 
-	inline hard::Register *operator[](int i) const { ASSERT(i < ARM_REG_COUNT); return map[i]; }
+	inline hard::Register *operator[](int i) const { ASSERT(i < AARCH64_REG_COUNT); return map[i]; }
 
 private:
-	hard::Register *map[ARM_REG_COUNT];
+	hard::Register *map[AARCH64_REG_COUNT];
 };
 static RegisterDecoder register_decoder;
 
@@ -232,7 +232,7 @@ public:
 	void semKernel(sem::Block &block) override;
 	Condition condition() override;
 
-	int multiCount() override { return otawa::arm::NUM_REGS_LOAD_STORE(this); }
+	int multiCount() override { return otawa::aarch64::NUM_REGS_LOAD_STORE(this); }
 	
 protected:
 	Process &proc;
@@ -299,15 +299,15 @@ public:
 	void semInsts(sem::Block &block) override {
 		block.add(sem::_if(0, 0, 0));
 		i->semKernel(block);
-		block[0] = sem::_if(sem_conds[c], sr.platformNumber(), block.length());
+		// block[0] = sem::_if(sem_conds[c], sr.platformNumber(), block.length());
 	}
 
 	void semKernel(sem::Block &block) override
 		{ i->semKernel(block); }
 
-	Condition condition() override {
-		return Condition(sem_conds[c], &sr);
-	}
+	// Condition condition() override {
+	// 	return Condition(sem_conds[c], &sr);
+	// }
 
 private:
 	otawa::Inst *i;
@@ -344,8 +344,8 @@ private:
 
 
 /****** Process class ******/
-
-io::Output& operator<<(io::Output& out) {
+typedef enum { NONE = 0, ARM = 1, DATA = 2 } area_t;
+io::Output& operator<<(io::Output& out, area_t i) {
     out << "aarch64";
 	return out;
 }
@@ -364,14 +364,14 @@ public:
 	 	_platform(0),
 		_memory(0),
 		_decoder(0),
-		map(0),
+		_lines(0),
 		_file(0),
 		argc(0),
 		argv(0),
 		envp(0),
 		no_stack(true),
 		init(false)
-#		ifdef ARM_MEM_IO
+#		ifdef AARCH64_MEM_IO
 			, io_man(nullptr)
 #		endif
 	{
@@ -383,7 +383,7 @@ public:
 		ASSERTP(_platform, "cannot create an aarch64_platform");
 		_decoder = aarch64_new_decoder(_platform);
 		ASSERTP(_decoder, "cannot create an aarch64_decoder");
-		_memory = aarch64_get_memory(_platform, ARM_MAIN_MEMORY);
+		_memory = aarch64_get_memory(_platform, AARCH64_MAIN_MEMORY);
 		ASSERTP(_memory, "cannot get main aarch64_memory");
 		aarch64_lock_platform(_platform);
 
@@ -420,7 +420,7 @@ public:
 		aarch64_delete_decoder(_decoder);
 		aarch64_unlock_platform(_platform);
 		if(_file)
-			gel_close(_file);
+			delete _file;
 	}
 
 	// Process overloads
@@ -441,103 +441,137 @@ public:
 		addFile(file);
 
 		// build the environment
-		gel_env_t genv = *gel_default_env();
-		genv.argv = argv;
-		genv.envp = envp;
-		if(no_stack)
-			genv.flags = GEL_ENV_NO_STACK;
+		gel::Parameter genv;
+		cstring a[argc];
+		for(int i = 0; i < argc; i++)
+			a[i] = argv[i];
+		genv.arg = Array<cstring>(argc, a);
+		int c = 0;
+		for(int i = 0; envp[i] != nullptr; i++);
+		cstring e[c];
+		for(int i = 0; i < c; i++)
+			e[i] = envp[i];
+		genv.env = Array<cstring>(c, e);
+		genv.stack_alloc = !no_stack;
 
-		// build the GEL image
-		_file = gel_open(path.chars(), NULL, GEL_OPEN_QUIET);
-		if(!_file)
-			throw LoadException(_ << "cannot load \"" << path << "\": " << gel_strerror());
-		gel_image_t *gimage = gel_image_load(_file, &genv, 0);
-		if(!gimage) {
-			gel_close(_file);
-			throw LoadException(_ << "cannot build image of \"" << path << "\": " << gel_strerror());
-		}
+		try {
+			// build the GEL image
+			_file = gel::Manager::open(path);
+			gel::Image* image = _file->make(genv);
 
-		// build the GLISS image
-		gel_image_info_t iinfo;
-		gel_image_infos(gimage, &iinfo);
-		for(t::uint32 i = 0; i < iinfo.membersnum; i++) {
-			gel_cursor_t cursor;
-			gel_block2cursor(iinfo.members[i], &cursor);
-			if(gel_cursor_avail(cursor) > 0)
-				aarch64_mem_write(_memory,
-					gel_cursor_vaddr(cursor),
-					gel_cursor_addr(&cursor),
-					gel_cursor_avail(cursor));
-		}
+			if(! image)
+				throw LoadException("gel returned no image");
 
-		// cleanup image
-		gel_image_close(gimage);
-
-		// build segments
-		stree::SegmentBuilder<t::uint32, bool> builder(false);
-		gel_file_info_t infos;
-		gel_file_infos(_file, &infos);
-		for (int i = 0; i < infos.sectnum; i++) {
-			gel_sect_info_t infos;
-			gel_sect_t *sect = gel_getsectbyidx(_file, i);
-			ASSERT(sect);
-			gel_sect_infos(sect, &infos);
-			if(infos.vaddr != 0 && infos.size != 0) {
-				int flags = 0;
-				if(infos.flags & SHF_EXECINSTR) {
+			// build segments
+			stree::SegmentBuilder<t::uint32, bool> builder(false);
+			for(gel::ImageSegment *seg: image->segments()) {
+				// build the segment
+				auto buf = seg->buffer();
+				t::uint32 flags = 0;
+				if(seg->isExecutable()) {
 					flags |= Segment::EXECUTABLE;
-					builder.add(infos.vaddr, infos.vaddr + infos.size, true);
+					builder.add(seg->baseAddress(), seg->baseAddress() + buf.size(), true);
 				}
-				if(infos.flags & SHF_WRITE)
+				if(seg->isWritable())
 					flags |= Segment::WRITABLE;
-				if(infos.type == SHT_PROGBITS)
+				else if(seg->hasContent())
 					flags |= Segment::INITIALIZED;
-				Segment *seg = new Segment(*this, infos.name, infos.vaddr, infos.size, flags);
-				file->addSegment(seg);
+				
+				auto *oseg = new Segment(*this,
+					seg->name(),
+					seg->baseAddress(),
+					seg->size(),
+					flags);
+				file->addSegment(oseg);
+
+				cerr << "DEBUG - Segment: addr=" << seg->baseAddress() << " / size: " << buf.size() << " / first byte: " << hex << buf.at(0) << endl; 
+
+				// set the memory
+				aarch64_mem_write(_memory,
+					seg->baseAddress(),
+					buf.bytes(),
+					buf.size());
 			}
-		}
-		stree::Tree<t::uint32, bool> execs;
-		builder.make(execs);
+			stree::Tree<t::uint32, bool> execs;
+			builder.make(execs);
 
-		// Initialize symbols
-		gel_sym_iter_t iter;
-		gel_sym_t *sym;
-		for(sym = gel_sym_first(&iter, _file); sym; sym = gel_sym_next(&iter)) {
-
-			// get the symbol description
-			gel_sym_info_t infos;
-			gel_sym_infos(sym, &infos);
-
-			// compute the kind
-			Symbol::kind_t kind = Symbol::NONE;
-			t::uint32 mask = 0xffffffff;
-			switch(ELF32_ST_TYPE(infos.info)) {
-			case STT_FUNC:
-				kind = Symbol::FUNCTION;
-				mask = 0xfffffffe;
-				break;
-			case STT_NOTYPE:
-				if(!execs.contains(infos.vaddr & mask))
+			// Initialize symbols
+			for(auto sym: _file->symbols()) {
+				// compute kind
+				Symbol::kind_t kind = Symbol::NONE;
+				t::uint64 val = sym->value();
+				string name = sym->name();
+				switch(sym->type()) {
+					case gel::Symbol::FUNC:
+						kind = Symbol::FUNCTION;
+						name = sanitize(demangle(sym->name()));
+						// cerr << "DEBUG - Symbol: function " << name << " - val " << val << io::endl;
+						break;
+					case gel::Symbol::OTHER_TYPE:
+					case gel::Symbol::LABEL:
+						kind = Symbol::LABEL;
+						// cerr << "DEBUG - Symbol: label " << name << " - val " << val << io::endl;
+						break;
+					case gel::Symbol::DATA:
+						name = demangle(sym->name());
+						// cerr << "DEBUG - Symbol: data " << name << io::endl;
+						kind = Symbol::DATA;
+						// val = tms2otawa(val);
+						break;
+					case gel::Symbol::NO_TYPE:
+						// cerr << "DEBUG - Symbol: NO TYPE " << name << io::endl;
+						if(!execs.contains(val))
+							continue;
+						kind = Symbol::LABEL;
+					// 	case STT_OBJECT:
+					// 		kind = Symbol::DATA;
+					// 		break;
+					default:
+						cerr << "DEBUG: don't know what to do with " << name << io::endl;
+						continue;
+				}
+				if(name.isEmpty())
 					continue;
-				kind = Symbol::LABEL;
-				break;
-			case STT_OBJECT:
-				kind = Symbol::DATA;
-				break;
-			default:
-				continue;
+				// build the symbol
+				//cerr << "Adding this symbol to file:" << sym->name().chars() << "\n";
+				Symbol *osym = new Symbol(*file, name,
+					kind, val, sym->size());
+				// cerr << "DEBUG: OTAWA: " << osym << io::endl;
+				file->addSymbol(osym);
 			}
 
-			// Build the label if required
-			String label(infos.name);
-			Symbol *symbol = new Symbol(*file, label, kind, infos.vaddr & mask, infos.size);
-			file->addSymbol(symbol);
-		}
-		//gel_enum_free(iter);
+			// clean up
+			delete image;
 
-		// Last initializations
-		_start = findInstAt(Address(infos.entry & 0xfffffffe));
-		return file;
+			// Last initializations
+			_start = findInstAt(_file->entry());
+			return file;
+		}
+		catch(gel::Exception& e) {
+			throw LoadException(_ << "cannot load \"" << path << "\": " << e.message());
+		}
+	}
+
+	string demangle(const string & str) {
+        int status;
+        string demangled = str;
+        char *realname = abi::__cxa_demangle(str.toCString(), 0, 0, &status);
+        if(status == 0) {
+          demangled = realname;
+        }
+        if(realname != NULL)
+          free(realname);
+
+        return demangled;
+    }
+
+	//with CPP, we can have -/+ signs in the symb name in case of templates
+	// otawa doesn't like that
+	string sanitize(const string &str) {
+		string res = str;
+		res = res.replace("-", "m");
+		res = res.replace("+", "p");
+		return res;
 	}
 
 	// internal work
@@ -547,7 +581,7 @@ public:
 	{
 		// Decode instruction
 		aarch64_inst_t *inst = decode_raw(oinst->address());
-		if(inst->ident == ARM_UNKNOWN) {
+		if(inst->ident == AARCH64_UNKNOWN) {
 			free_inst(inst);
 			return;
 		}
@@ -572,14 +606,14 @@ public:
 		// }
 
 		// make the in and the out
-		in = AllocArray<hard::Register *>(reg_in.length());
-		for(int i = 0 ; i < reg_in.length(); i++)
-			in.set(i, reg_in.get(i));
-		out = AllocArray<hard::Register *>(reg_out.length());
-		for (int i = 0 ; i < reg_out.length(); i++)
-			out.set(i, reg_out.get(i));
+		// in = AllocArray<hard::Register *>(reg_in.length());
+		// for(int i = 0 ; i < reg_in.length(); i++)
+		// 	in.set(i, reg_in.get(i));
+		// out = AllocArray<hard::Register *>(reg_out.length());
+		// for (int i = 0 ; i < reg_out.length(); i++)
+		// 	out.set(i, reg_out.get(i));
 
-		// Free instruction
+		// // Free instruction
 		free_inst(inst);
 	}
 
@@ -623,16 +657,16 @@ public:
 		// compute multiple register load/store information
 		t::uint16 multi = aarch64_multi(inst);
 		if(multi)
-			otawa::arm::NUM_REGS_LOAD_STORE(i) = elm::ones(multi);
+			otawa::aarch64::NUM_REGS_LOAD_STORE(i) = elm::ones(multi);
 
 		// special processing for IT
 		// TO TEST
-		if(inst->ident == ARM_YIELDS) {
-			t::uint8 firstcond = ARM_YIELDS_i_x_firstcond;
-			t::uint8 mask = ARM_YIELDS_i_x_mask;
-			if(mask != 0)
-				makeIT(i, firstcond, mask, seg);
-		}
+		// if(inst->ident == AARCH64_YIELDS) {
+		// 	t::uint8 firstcond = AARCH64_YIELDS_i_x_firstcond;
+		// 	t::uint8 mask = AARCH64_YIELDS_i_x_mask;
+		// 	if(mask != 0)
+		// 		makeIT(i, firstcond, mask, seg);
+		// }
 
 		// cleanup and return
 		free_inst(inst);
@@ -652,40 +686,37 @@ public:
 	}
 
 	inline void free_inst(aarch64_inst_t *inst) const { aarch64_free_inst(inst); }
-	virtual gel_file_t *file(void) const { return _file; }
+	virtual gel::File *file(void) const { return _file; }
 	virtual aarch64_memory_t *memory(void) const { return _memory; }
 	inline aarch64_decoder_t *decoder() const { return _decoder; }
 	inline void *platform(void) const { return _platform; }
 
 	virtual Option<Pair<cstring, int> > getSourceLine(Address addr) {
 		setup_debug();
-		if (!map)
+		if (_lines == nullptr)
 			return none;
-		const char *file;
-		int line;
-		if (!map || gel_line_from_address(map, addr.offset(), &file, &line) < 0)
+		auto l = _lines->lineAt(addr.offset());
+		if(l == nullptr)
 			return none;
-		return some(pair(cstring(file), line));
+		return some(pair(
+			l->file()->path().toString().toCString(),
+			l->line()));
 	}
 
 	virtual void getAddresses(cstring file, int line, Vector<Pair<Address, Address> >& addresses) {
 		setup_debug();
 		addresses.clear();
-		if (!map)
+		if(_lines == nullptr)
 			return;
-		gel_line_iter_t iter;
-		gel_location_t loc, ploc = { 0, 0, 0, 0 };
-		// TODO		Not very performant but it works.
-		for (loc = gel_first_line(&iter, map); loc.file; loc = gel_next_line(&iter)) {
-			cstring lfile = loc.file;
-			if (file == loc.file || lfile.endsWith(file)) {
-				if (t::uint32(line) == loc.line)
-					addresses.add(pair(Address(loc.low_addr), Address(loc.high_addr)));
-				else if(loc.file == ploc.file && t::uint32(line) > ploc.line && t::uint32(line) < loc.line)
-					addresses.add(pair(Address(ploc.low_addr), Address(ploc.high_addr)));
-			}
-			ploc = loc;
-		}
+		auto f = _lines->files().get(file);
+		if(!f)
+			return;
+		Vector<Pair<gel::address_t, gel::address_t>> res;
+		(*f)->find(line, res);
+		for(auto a: res)
+			addresses.add(pair(
+				Address(a.fst),
+				Address(a.snd)));
 	}
 
 	virtual void get(Address at, t::int8& val)
@@ -719,7 +750,7 @@ public:
 		{ aarch64_mem_read(_memory, at.offset(), buf, size); }
 	virtual int maxTemp (void) const { return 3; }
 
-	// otawa::arm::Info overload
+	// otawa::aarch64::Info overload
 	virtual void *decode(otawa::Inst *inst) { return decode_raw(inst->address()); }
 	virtual void free(void *decoded) { free_inst(static_cast<aarch64_inst_t *>(decoded)); }
 
@@ -730,8 +761,8 @@ public:
 		return r;
 	}
 
-	virtual void handleIO(Address addr, t::uint32 size, otawa::arm::IOManager& man) {
-#		ifndef ARM_MEM_IO
+	virtual void handleIO(Address addr, t::uint32 size, otawa::aarch64::IOManager& man) {
+#		ifndef AARCH64_MEM_IO
 			ASSERTP(false, "WITH_MEM_IO not configured in arm GLISS plugin!");
 #		else
 			//io_man = &man;
@@ -741,12 +772,12 @@ public:
 
 private:
 
-#	ifdef ARM_MEM_IO
+#	ifdef AARCH64_MEM_IO
 	static void io_callback(aarch64_address_t addr, int size, void *data, int type_access, void *cdata) {
-		otawa::arm::IOManager *man = static_cast<otawa::arm::IOManager *>(cdata);
-		if(type_access == ARM_MEM_READ)
+		otawa::aarch64::IOManager *man = static_cast<otawa::aarch64::IOManager *>(cdata);
+		if(type_access == AARCH64_MEM_READ)
 			man->read(addr, size, static_cast<t::uint8 *>(data));
-		else if(type_access == ARM_MEM_WRITE)
+		else if(type_access == AARCH64_MEM_WRITE)
 			man->write(addr, size, static_cast<t::uint8 *>(data));
 		else
 			ASSERT(0);
@@ -758,7 +789,7 @@ private:
 		if(init)
 			return;
 		init = true;
-		map = gel_new_line_map(_file);
+		_lines = _file->debugLines();
 	}
 
 	otawa::Inst *_start;
@@ -766,14 +797,14 @@ private:
 	aarch64_platform_t *_platform;
 	aarch64_memory_t *_memory;
 	aarch64_decoder_t *_decoder;
-	gel_line_map_t *map;
-	gel_file_t *_file;
+	gel::File *_file;
+	gel::DebugLine *_lines;
 	int argc;
 	char **argv, **envp;
 	bool no_stack;
 	bool init;
-#	ifdef ARM_MEM_IO
-		otawa::arm::IOManager *io_man;
+#	ifdef AARCH64_MEM_IO
+		otawa::aarch64::IOManager *io_man;
 #	endif
 };
 
@@ -792,7 +823,7 @@ void Inst::decodeRegs(void) {
 
 	// Decode instruction
 	aarch64_inst_t *inst = proc.decode_raw(address());
-	if(inst->ident == ARM_UNKNOWN)
+	if(inst->ident == AARCH64_UNKNOWN)
 		return;
 
 	// get register infos
@@ -884,7 +915,7 @@ void Inst::semInsts (sem::Block &block) {
 
 	// get the block
 	aarch64_inst_t *inst = proc.decode_raw(address());
-	if(inst->ident == ARM_UNKNOWN)
+	if(inst->ident == AARCH64_UNKNOWN)
 		return;
 	block.add(sem::seti(15, address().offset()));
 	aarch64_sem(inst, block);
@@ -903,7 +934,7 @@ void Inst::semInsts (sem::Block &block) {
  */
 void Inst::semKernel(sem::Block &block) {
 	aarch64_inst_t *inst = proc.decode_raw(address());
-	if(inst->ident == ARM_UNKNOWN)
+	if(inst->ident == AARCH64_UNKNOWN)
 		return;
 	block.add(sem::seti(15, address().offset()));
 	aarch64_ksem(inst, block);
@@ -933,7 +964,7 @@ Condition Inst::condition(void) {
 	aarch64_free_inst(inst);
 
 	// make the condition
-	return Condition(cond, &sr);
+	return Condition(cond, nullptr);// &sr);
 }
 
 
@@ -946,7 +977,7 @@ public:
 		.version(VERSION)
 		.description("loader for ARM 64-bit architecture")
 		.license(Manager::copyright)
-		.alias("elf_42")) { }
+		.alias("elf_183")) { }
 
 	virtual CString getName(void) const { return "aarch64"; }
 
