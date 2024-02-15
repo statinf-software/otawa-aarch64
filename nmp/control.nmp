@@ -1,26 +1,45 @@
-extend
-	B_Cond, BC_Cond
-		otawa_condition = cond.otawa_condition
-		otawa_target = target
 
 extend 
-	B, B_Cond, BC_Cond, BL, BLR, BLRAA, BLRAAZ,
+	BLRAA, BLRAAZ,
 	BLRAB, BLRABZ, BR, BRAA, BRAAZ, BRAB, BRABZ
 		otawa_kind = IS_CONTROL
 
 extend B
+	otawa_kind = IS_CONTROL
 	otawa_ksem = {
 		seti(t1, target);
 		_branch(t1);
 	}
+	otawa_target = target
+
+extend BR
+	otawa_kind = IS_CONTROL
 
 extend B_Cond
+	otawa_kind = IS_CONTROL | IS_COND
+	otawa_condition = cond.otawa_condition
+	otawa_target = target
 	otawa_ksem = {
 		seti(t1, target);
 		_branch(t1);
 	}
+	otawa_sem = {
+		if !cond.otawa_never then
+			seti(t1, target);
+			_branch(t1);
+		endif;
+	}
+	otawa_condition = cond.otawa_condition
+	otawa_target = target
 
-extend B_Cond
+extend BC_Cond
+	otawa_kind = IS_CONTROL | IS_COND | IS_CALL
+	otawa_condition = cond.otawa_condition
+	otawa_target = target
+	otawa_ksem = {
+		seti(t1, target);
+		_branch(t1);
+	}
 	otawa_sem = {
 		if !cond.otawa_never then
 			seti(t1, target);
@@ -28,20 +47,48 @@ extend B_Cond
 		endif;
 	}
 
-extend BC_Cond
-	otawa_ksem = {
-		seti(t1, target);
-		_branch(t1);
-	}
-
 extend BL
+	otawa_kind = IS_CONTROL | IS_CALL
 	otawa_ksem = {
 		seti(t1, target);
 		_branch(t1);
 	}
+	otawa_target = target
 
-//extend BLR
-//	otawa_ksem = {
-//		seti(t1, __IADDR + 8 + X[rn]);
-//		_branch(t1);
-//	}
+extend BLR
+	otawa_kind = IS_CONTROL | IS_CALL
+
+extend CBNZ
+	otawa_kind = IS_CONTROL | IS_COND
+	otawa_ksem = {
+		seti(t1, target);
+		_branch(t1);
+	}
+	otawa_target = target
+
+extend CBZ
+	otawa_kind = IS_CONTROL | IS_COND
+	otawa_ksem = {
+		seti(t1, target);
+		_branch(t1);
+	}
+	otawa_target = target
+
+extend TBNZ
+	otawa_kind = IS_CONTROL | IS_COND
+	otawa_ksem = {
+		seti(t1, target);
+		_branch(t1);
+	}
+	otawa_target = target
+
+extend TBZ
+	otawa_kind = IS_CONTROL | IS_COND
+	otawa_ksem = {
+		seti(t1, target);
+		_branch(t1);
+	}
+	otawa_target = target
+
+extend RET
+	otawa_kind = IS_CONTROL | IS_RETURN
