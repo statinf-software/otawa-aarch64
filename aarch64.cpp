@@ -41,6 +41,7 @@ extern "C" {
 #	include <aarch64/api.h>
 #	include <aarch64/config.h>
 #	include <aarch64/used_regs.h>
+#	include <../extra/myfile.h>
 }
 
 namespace otawa {
@@ -508,6 +509,7 @@ public:
 						// cerr << "DEBUG - Symbol: function " << name << " - val " << val << io::endl;
 						break;
 					case gel::Symbol::OTHER_TYPE:
+						continue;
 					case gel::Symbol::LABEL:
 						kind = Symbol::LABEL;
 						// cerr << "DEBUG - Symbol: label " << name << " - val " << val << io::endl;
@@ -642,10 +644,7 @@ public:
 
 		// compute size
 		int size;
-		if(inst->ident != 0)
-			size = aarch64_get_inst_size(inst) >> 3;
-		else
-			size = 4;
+		size = 4;
 
 		// build the instruction
 		Inst *i;
@@ -653,6 +652,10 @@ public:
 			i = new BranchInst(*this, kind, addr, size);
 		else
 			i = new Inst(*this, kind, addr, size);
+
+// cout << "-----> " << addr << " -- ";
+// i->dump(cout);
+// cout << endl;
 
 		// compute multiple register load/store information
 		t::uint16 multi = aarch64_multi(inst);
@@ -814,6 +817,7 @@ private:
 void Inst::dump(io::Output& out) {
 	char out_buffer[200];
 	aarch64_inst_t *inst = proc.decode_raw(_addr);
+	//aarch64_disasm_ben(out_buffer, inst);
 	aarch64_disasm(out_buffer, inst);
 	proc.free_inst(inst);
 	out << out_buffer;
