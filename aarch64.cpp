@@ -41,7 +41,6 @@ extern "C" {
 #	include <aarch64/api.h>
 #	include <aarch64/config.h>
 #	include <aarch64/used_regs.h>
-#	include <../extra/myfile.h>
 }
 
 namespace otawa {
