@@ -6,8 +6,8 @@ set(NAMESPACE		"otawa")
 set(ELF_NUM			"183")
 set(CONFIG			)
 
-set(ARM8_PATH "${CMAKE_SOURCE_DIR}/../armv8a-64")
-set(ARM9_PATH "${CMAKE_SOURCE_DIR}/../armv9a-64")
+set(ARM8_PATH "${CMAKE_SOURCE_DIR}/../aarch64-armv8v9")
+set(ARM9_PATH "${CMAKE_SOURCE_DIR}/../aarch64-armv8v9")
 
 if(EXISTS "${ARM9_PATH}")
 	set(ARM_PATH "${ARM9_PATH}")
