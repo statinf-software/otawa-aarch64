@@ -504,7 +504,7 @@ public:
 				switch(sym->type()) {
 					case gel::Symbol::FUNC:
 						kind = Symbol::FUNCTION;
-						name = sym->name();
+						name = sanitize(demangle(sym->name()));
 						// cerr << "DEBUG - Symbol: function " << name << " - val " << val << io::endl;
 						break;
 					case gel::Symbol::OTHER_TYPE:
@@ -514,7 +514,7 @@ public:
 						// cerr << "DEBUG - Symbol: label " << name << " - val " << val << io::endl;
 						break;
 					case gel::Symbol::DATA:
-						name = sym->name();
+						name = demangle(sym->name());
 						// cerr << "DEBUG - Symbol: data " << name << io::endl;
 						kind = Symbol::DATA;
 						// val = tms2otawa(val);
@@ -551,6 +551,28 @@ public:
 		catch(gel::Exception& e) {
 			throw LoadException(_ << "cannot load \"" << path << "\": " << e.message());
 		}
+	}
+
+	string demangle(const string & str) {
+        int status;
+        string demangled = str;
+        char *realname = abi::__cxa_demangle(str.toCString(), 0, 0, &status);
+        if(status == 0) {
+          demangled = realname;
+        }
+        if(realname != NULL)
+          free(realname);
+
+        return demangled;
+    }
+
+	//with CPP, we can have -/+ signs in the symb name in case of templates
+	// otawa doesn't like that
+	string sanitize(const string &str) {
+		string res = str;
+		res = res.replace("-", "m");
+		res = res.replace("+", "p");
+		return res;
 	}
 
 	// internal work
@@ -870,23 +892,6 @@ BranchInst::kind_t BranchInst::kind(void) {
 				_kind |= IS_CALL;
 		}
 
-	}
-	//Case for which a simple branch actually calls a function
-	if((_kind & IS_CONTROL) && !(_kind & IS_CALL)) {
-		otawa::Inst *ta = target();
-		if(ta) {
-			otawa::address_t taa = ta->address();
-			otawa::Symbol *tsymb = process().program()->findSymbol(taa);
-			if(tsymb && tsymb->kind() == Symbol::FUNCTION) {
-				//change kind to be a call
-				_kind |= IS_CALL;
-				// //set the cfg of the inst as no return
-				// otawa::Symbol *csymb = process().program()->findContainingSymbol(address());
-				// if(csymb) {
-				// 	csymb->setNoReturn();
-				// }
-			}
-		}
 	}
 	return _kind;
 }
