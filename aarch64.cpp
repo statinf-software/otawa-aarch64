@@ -871,23 +871,6 @@ BranchInst::kind_t BranchInst::kind(void) {
 		}
 
 	}
-	//Case for which a simple branch actually calls a function
-	if((_kind & IS_CONTROL) && !(_kind & IS_CALL)) {
-		otawa::Inst *ta = target();
-		if(ta) {
-			otawa::address_t taa = ta->address();
-			otawa::Symbol *tsymb = process().program()->findSymbol(taa);
-			if(tsymb && tsymb->kind() == Symbol::FUNCTION) {
-				//change kind to be a call
-				_kind |= IS_CALL;
-				// //set the cfg of the inst as no return
-				// otawa::Symbol *csymb = process().program()->findContainingSymbol(address());
-				// if(csymb) {
-				// 	csymb->setNoReturn();
-				// }
-			}
-		}
-	}
 	return _kind;
 }
 
