@@ -436,31 +436,14 @@ public:
 		File *file = new otawa::File(path);
 		addFile(file);
 
-		// build the environment
-		gel::Parameter genv;
-		cstring a[argc];
-		for(int i = 0; i < argc; i++)
-			a[i] = argv[i];
-		genv.arg = Array<cstring>(argc, a);
-		int c = 0;
-		for(int i = 0; envp[i] != nullptr; i++);
-		cstring e[c];
-		for(int i = 0; i < c; i++)
-			e[i] = envp[i];
-		genv.env = Array<cstring>(c, e);
-		genv.stack_alloc = !no_stack;
-
 		try {
 			// build the GEL image
 			_file = gel::Manager::open(path);
-			gel::Image* image = _file->make(genv);
-
-			if(! image)
-				throw LoadException("gel returned no image");
 
 			// build segments
 			stree::SegmentBuilder<t::uint32, bool> builder(false);
-			for(gel::ImageSegment *seg: image->segments()) {
+			for(int i=0 ; i < _file->countSections() ; ++i) {
+				gel::Section *seg = _file->section(i);
 				// build the segment
 				auto buf = seg->buffer();
 				t::uint32 flags = 0;
@@ -536,9 +519,6 @@ public:
 				// cerr << "DEBUG: OTAWA: " << osym << io::endl;
 				file->addSymbol(osym);
 			}
-
-			// clean up
-			delete image;
 
 			// Last initializations
 			_start = findInstAt(_file->entry());
