@@ -463,13 +463,15 @@ public:
 					flags);
 				file->addSegment(oseg);
 
-				cerr << "DEBUG - Segment: addr=" << seg->baseAddress() << " / size: " << buf.size() << " / first byte: " << hex << buf.at(0) << endl; 
+				// cerr << "DEBUG - Segment: name="<< seg->name() << " / addr=" << seg->baseAddress() << " / size: " << buf.size() << endl; 
 
-				// set the memory
-				aarch64_mem_write(_memory,
-					seg->baseAddress(),
-					buf.bytes(),
-					buf.size());
+				if(buf.size() > 0) {
+					// set the memory
+					aarch64_mem_write(_memory,
+						seg->baseAddress(),
+						buf.bytes(),
+						buf.size());
+				}
 			}
 			stree::Tree<t::uint32, bool> execs;
 			builder.make(execs);
@@ -770,7 +772,6 @@ private:
 void Inst::dump(io::Output& out) {
 	char out_buffer[200];
 	aarch64_inst_t *inst = proc.decode_raw(_addr);
-	//aarch64_disasm_ben(out_buffer, inst);
 	aarch64_disasm(out_buffer, inst);
 	proc.free_inst(inst);
 	out << out_buffer;
